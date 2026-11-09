@@ -3,6 +3,7 @@ import { env } from '../../config/env';
 import { ModelClient } from '../../clinical/extractionEngine';
 import { resolveAvailableModel, resetModelCache, DiscoveredModelInfo } from './GeminiLLMProvider';
 import { OpenRouterModelClient } from './OpenRouterLLMProvider';
+import { MockClinicalModelClient } from './MockClinicalModelClient';
 
 /**
  * The text-only model client the clinical pipeline runs on.
@@ -188,6 +189,14 @@ let cached: ModelClient | null = null;
 export function getClinicalModelClient(): ModelClient {
   if (cached) return cached;
 
+  if (env.LLM_PROVIDER === 'mock') {
+    if (env.NODE_ENV === 'production') {
+      throw new Error('Clinical report generation cannot use the mock provider in production. Configure GEMINI_API_KEY or OPENROUTER_API_KEY.');
+    }
+    cached = new MockClinicalModelClient();
+    return cached;
+  }
+
   const openRouterKey =
     env.OPENROUTER_API_KEY?.trim() ||
     process.env.OPENROUTER_API_KEY?.trim() ||
@@ -201,11 +210,8 @@ export function getClinicalModelClient(): ModelClient {
       ? (env.LLM_API_KEY?.trim() || process.env.LLM_API_KEY?.trim())
       : undefined);
 
-  // Preference: OpenRouter is our primary clinical model provider.
-  // Use OpenRouter if:
-  // - env.LLM_PROVIDER === 'openrouter'
-  // - An OpenRouter API key is present
-  // - Or neither explicitly gemini nor gemini key is found
+  // Prefer an explicitly configured OpenRouter provider or an OpenRouter key. Gemini remains
+  // selected when LLM_PROVIDER=gemini and only a Gemini key is configured.
   const shouldUseOpenRouter =
     env.LLM_PROVIDER === 'openrouter' ||
     Boolean(openRouterKey) ||

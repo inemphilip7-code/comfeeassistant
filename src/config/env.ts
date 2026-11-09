@@ -7,6 +7,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.string().transform((val) => parseInt(val, 10)).default('3000'),
   DATABASE_URL: z.string().default('postgresql://vabatim:vabatim@localhost:5432/vabatim_db'),
+  DIRECT_URL: z.string().optional(),
+  AUTO_DB_SYNC: z.string().default('false'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   UPSTASH_REDIS_REST_URL: z.string().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -64,14 +66,22 @@ if (env.NODE_ENV === 'production') {
     (env as any).LLM_PROVIDER = 'openrouter';
   }
   if (env.JWT_SECRET === 'development-secret-change-in-prod' || env.JWT_SECRET.length < 32) {
-    console.warn('[config warning] JWT_SECRET in production is unset or under 32 chars. Using secure default key.');
-    (env as any).JWT_SECRET = process.env.JWT_SECRET || 'vabatim-prod-jwt-secret-key-2026-secure-fallback-key-32chars';
+    throw new Error(
+      'CRITICAL CONFIGURATION ERROR: production requires a unique JWT_SECRET of at least 32 characters. ' +
+        'Set it as a secret environment variable before starting the service.'
+    );
+  }
+  if (env.LLM_PROVIDER === 'mock') {
+    throw new Error(
+      'CRITICAL CONFIGURATION ERROR: clinical report generation cannot use LLM_PROVIDER=mock in production. ' +
+        'Set LLM_PROVIDER=gemini with GEMINI_API_KEY, or LLM_PROVIDER=openrouter with OPENROUTER_API_KEY.'
+    );
   }
   if (env.LLM_PROVIDER === 'gemini' && !(env.LLM_API_KEY || env.GEMINI_API_KEY)) {
-    console.warn('[config warning] GEMINI_API_KEY is missing for LLM_PROVIDER=gemini.');
+    throw new Error('CRITICAL CONFIGURATION ERROR: LLM_PROVIDER=gemini requires GEMINI_API_KEY or LLM_API_KEY.');
   }
   if (env.LLM_PROVIDER === 'openrouter' && !(env.LLM_API_KEY || env.OPENROUTER_API_KEY)) {
-    console.warn('[config warning] OPENROUTER_API_KEY is missing for LLM_PROVIDER=openrouter.');
+    throw new Error('CRITICAL CONFIGURATION ERROR: LLM_PROVIDER=openrouter requires OPENROUTER_API_KEY or LLM_API_KEY.');
   }
   if (env.SPEECH_PROVIDER === 'google' && !(env.GOOGLE_SPEECH_API_KEY || env.GOOGLE_ACCESS_TOKEN)) {
     console.warn('[config warning] SPEECH_PROVIDER=google requires GOOGLE_SPEECH_API_KEY.');

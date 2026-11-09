@@ -1,4 +1,8 @@
-## Render blueprint — Vabatim free-tier MVP.
+## Render blueprint — synthetic-data demo deployment.
+##
+## This blueprint uses Render's free plans. Render does not recommend free plans for
+## production; free Postgres expires after 30 days. Use paid services and a migration flow
+## before storing real patient data.
 ##
 ## One web service and one database. No background worker and no Redis: transcription
 ## happens on the clinician's device and the documentation pipeline runs inside the web
@@ -34,9 +38,7 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 24h
-      # Comma-separated list of browser origins allowed to call this API directly. Requests
-      # proxied through the Vercel rewrite are same-origin and do not need it, but setting it
-      # makes direct calls work too.
+      # Exact production Vercel origin. The frontend calls this API directly.
       - key: CORS_ORIGIN
         sync: false
 
@@ -45,6 +47,8 @@ services:
         fromDatabase:
           name: vabatim-db
           property: connectionString
+      - key: AUTO_DB_SYNC
+        value: 'true'
 
       # --- Processing -----------------------------------------------------
       # inline: the web service runs documentation generation itself. No queue, no worker,
@@ -67,12 +71,11 @@ services:
 
       # --- Language model -------------------------------------------------
       - key: LLM_PROVIDER
-        value: gemini
-      - key: GEMINI_API_KEY
+        value: openrouter
+      - key: OPENROUTER_MODEL
+        value: google/gemini-2.0-flash-001
+      - key: OPENROUTER_API_KEY
         sync: false
-      # GEMINI_MODEL is intentionally unset. The server asks the API which models the key can
-      # serve and picks one. Pinning a model is what broke the previous deployment when that
-      # model was retired.
 
       # --- Storage --------------------------------------------------------
       - key: STORAGE_PROVIDER
@@ -100,6 +103,13 @@ services:
         sync: false # your Vercel URL, e.g. https://comfeeassistant.vercel.app
       - key: EMAIL_PROVIDER
         value: mock
+      # Initial account only. Values are hashed into PostgreSQL and never logged.
+      - key: SEED_CLINICIAN_EMAIL
+        sync: false
+      - key: SEED_CLINICIAN_PASSWORD
+        sync: false
+      - key: SEED_CLINICIAN_NAME
+        sync: false
 
 databases:
   - name: vabatim-db

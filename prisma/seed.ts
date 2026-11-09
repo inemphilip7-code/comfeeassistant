@@ -1,72 +1,51 @@
-import { PrismaClient, UserRole, MeetingState, ParticipantRole } from '@prisma/client';
+import { PrismaClient, UserRole } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+function requiredValue(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} must be set before creating the initial clinician account.`);
+  return value;
+}
+
 async function seed() {
-  console.log('Seeding Vabatim database...');
+  const email = requiredValue('SEED_CLINICIAN_EMAIL').toLowerCase();
+  const password = requiredValue('SEED_CLINICIAN_PASSWORD');
+  const fullName = requiredValue('SEED_CLINICIAN_NAME');
+  const organisationName = process.env.SEED_ORGANISATION_NAME?.trim() || 'Vabatim Clinical Service';
+  const organisationCode = process.env.SEED_ORGANISATION_CODE?.trim() || 'VABATIM-CLINIC';
 
-  const org = await prisma.organisation.upsert({
-    where: { code: 'NHS-UK-TRUST-01' },
+  if (!email.includes('@')) throw new Error('SEED_CLINICIAN_EMAIL must be a valid email address.');
+  if (password.length < 12) throw new Error('SEED_CLINICIAN_PASSWORD must be at least 12 characters.');
+
+  const organisation = await prisma.organisation.upsert({
+    where: { code: organisationCode },
     update: {},
-    create: {
-      name: 'UK NHS Seating & Mobility Trust',
-      code: 'NHS-UK-TRUST-01'
-    }
+    create: { name: organisationName, code: organisationCode }
   });
 
-  const passwordHash = await bcrypt.hash('ClinicianSecure123!', 10);
-
-  const clinician = await prisma.user.upsert({
-    where: { email: 'sarah.jenkins@nhs.uk' },
+  const passwordHash = await bcrypt.hash(password, 12);
+  await prisma.user.upsert({
+    where: { email },
     update: {},
     create: {
-      email: 'sarah.jenkins@nhs.uk',
+      email,
       passwordHash,
-      fullName: 'Dr. Sarah Jenkins (Senior Wheelchair Therapist)',
+      fullName,
       role: UserRole.CLINICIAN,
-      organisationId: org.id
+      organisationId: organisation.id
     }
   });
 
-  const meeting = await prisma.meeting.create({
-    data: {
-      organisationId: org.id,
-      clinicianId: clinician.id,
-      clientReference: 'CLIENT-REF-8842',
-      meetingType: 'PHYSICAL_SEATING_ASSESSMENT',
-      status: MeetingState.TRANSCRIPT_READY,
-      expectedSpeakerCount: 2,
-      retentionPolicy: 'UK_NHS_STANDARD_8Y',
-      consentStatus: true,
-      participants: {
-        create: [
-          { speakerId: 'Speaker 1', role: ParticipantRole.THERAPIST, displayName: 'Dr. Sarah Jenkins' },
-          { speakerId: 'Speaker 2', role: ParticipantRole.CLIENT, displayName: 'John Doe (Client)' }
-        ]
-      },
-      consentRecords: {
-        create: [
-          {
-            consentVersion: 'v1.2-UK-GDPR',
-            consentStatus: 'GRANTED',
-            policyVersion: '2026-PRIVACY-POLICY-V2',
-            participantRef: 'CLIENT-REF-8842',
-            actorId: clinician.id,
-            metadata: { method: 'DIGITAL_SIGNATURE_TABLET' }
-          }
-        ]
-      }
-    }
-  });
-
-  console.log(`Database seeded successfully! Demo meeting created with ID: ${meeting.id}`);
+  console.log('Initial clinician account is ready. No demo patient or meeting was created.');
 }
 
 seed()
-  .catch((e) => {
-    console.error('Seed error:', e);
-    process.exit(1);
+  .catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Database seed failed:', message);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

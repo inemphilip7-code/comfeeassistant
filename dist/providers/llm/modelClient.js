@@ -7,6 +7,7 @@ const generative_ai_1 = require("@google/generative-ai");
 const env_1 = require("../../config/env");
 const GeminiLLMProvider_1 = require("./GeminiLLMProvider");
 const OpenRouterLLMProvider_1 = require("./OpenRouterLLMProvider");
+const MockClinicalModelClient_1 = require("./MockClinicalModelClient");
 /**
  * The text-only model client the clinical pipeline runs on.
  *
@@ -149,6 +150,13 @@ let cached = null;
 function getClinicalModelClient() {
     if (cached)
         return cached;
+    if (env_1.env.LLM_PROVIDER === 'mock') {
+        if (env_1.env.NODE_ENV === 'production') {
+            throw new Error('Clinical report generation cannot use the mock provider in production. Configure GEMINI_API_KEY or OPENROUTER_API_KEY.');
+        }
+        cached = new MockClinicalModelClient_1.MockClinicalModelClient();
+        return cached;
+    }
     const openRouterKey = env_1.env.OPENROUTER_API_KEY?.trim() ||
         process.env.OPENROUTER_API_KEY?.trim() ||
         (env_1.env.LLM_API_KEY?.trim().startsWith('sk-or-') ? env_1.env.LLM_API_KEY.trim() : undefined) ||
@@ -158,11 +166,8 @@ function getClinicalModelClient() {
         (env_1.env.LLM_PROVIDER === 'gemini' && !env_1.env.LLM_API_KEY?.trim().startsWith('sk-or-')
             ? (env_1.env.LLM_API_KEY?.trim() || process.env.LLM_API_KEY?.trim())
             : undefined);
-    // Preference: OpenRouter is our primary clinical model provider.
-    // Use OpenRouter if:
-    // - env.LLM_PROVIDER === 'openrouter'
-    // - An OpenRouter API key is present
-    // - Or neither explicitly gemini nor gemini key is found
+    // Prefer an explicitly configured OpenRouter provider or an OpenRouter key. Gemini remains
+    // selected when LLM_PROVIDER=gemini and only a Gemini key is configured.
     const shouldUseOpenRouter = env_1.env.LLM_PROVIDER === 'openrouter' ||
         Boolean(openRouterKey) ||
         (env_1.env.LLM_PROVIDER !== 'gemini' && !geminiKey);

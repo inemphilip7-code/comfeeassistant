@@ -1,8 +1,22 @@
 import request from 'supertest';
 import app from '../../src/app';
 import { performanceTracker } from '../../src/services/performanceTracker';
+import { setClinicalModelClient } from '../../src/providers/llm/modelClient';
 
 describe('Controlled Seating Assessment End-to-End Pipeline Audit', () => {
+  beforeEach(() => {
+    setClinicalModelClient({
+      name: 'unavailable-test-model',
+      generate: async () => {
+        throw new Error('Simulated clinical model outage.');
+      }
+    });
+  });
+
+  afterEach(() => {
+    setClinicalModelClient(null);
+  });
+
   it('should execute full 15-step pipeline for a controlled wheelchair & seating assessment meeting', async () => {
     // 1. AUTHENTICATION
     const authRes = await request(app)
@@ -78,6 +92,19 @@ describe('Controlled Seating Assessment End-to-End Pipeline Audit', () => {
     // the clinical model is unavailable, so generation cannot have produced one — and a note
     // that does not exist must not be approvable. The previous implementation approved the
     // meeting regardless and returned a hardcoded note hash.
+    let job: any = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const jobRes = await request(app)
+        .get(`/api/transcripts/job/${processRes.body.jobId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(jobRes.status).toBe(200);
+      job = jobRes.body;
+      if (job.state === 'SUCCEEDED' || job.state === 'FAILED') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(job.state).toBe('FAILED');
+    expect(job.error).toMatch(/simulated clinical model outage/i);
+
     const approveRes = await request(app)
       .post(`/api/reviews/approve`)
       .set('Authorization', `Bearer ${token}`)
@@ -95,5 +122,5 @@ describe('Controlled Seating Assessment End-to-End Pipeline Audit', () => {
 
     const perfMetrics = performanceTracker.finalize(meetingId);
     expect(perfMetrics.meetingId).toBe(meetingId);
-  });
+  }, 15_000);
 });

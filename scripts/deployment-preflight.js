@@ -46,41 +46,62 @@ if (fs.existsSync(pkgPath)) {
   logFail(`package.json not found`);
 }
 
-// 2. Check render.yaml
+// 2. Check the Render-hosted API service.
 const renderPath = path.join(__dirname, '../render.yaml');
 if (fs.existsSync(renderPath)) {
   const renderContent = fs.readFileSync(renderPath, 'utf8');
-  if (renderContent.includes('npm run build') && renderContent.includes('dist/server.js')) {
-    logPass(`render.yaml correctly configured for web & worker targets`);
+  if (
+    renderContent.includes('npm run build') &&
+    renderContent.includes('startCommand: npm start') &&
+    renderContent.includes('healthCheckPath: /health') &&
+    renderContent.includes('value: openrouter') &&
+    renderContent.includes('key: OPENROUTER_API_KEY') &&
+    renderContent.includes('key: JWT_SECRET') &&
+    renderContent.includes('generateValue: true')
+  ) {
+    logPass(`render.yaml builds, starts, and health-checks the API with OpenRouter and generated JWT secret`);
   } else {
-    logWarn(`render.yaml check warnings`);
+    logFail(`render.yaml must define the API build, /health check, OpenRouter secret, and generated JWT secret`);
   }
 } else {
   logFail(`render.yaml not found`);
 }
 
-// 3. Check vercel.json
+// 3. Check the Vercel-hosted Vite frontend.
 const vercelPath = path.join(__dirname, '../vercel.json');
 if (fs.existsSync(vercelPath)) {
-  const vercelContent = fs.readFileSync(vercelPath, 'utf8');
-  if (!vercelContent.includes('"framework": "nextjs"')) {
-    logPass(`vercel.json correctly avoids invalid Next.js framework preset`);
-  } else {
-    logFail(`vercel.json must not set "framework": "nextjs" for Express API repository`);
+  try {
+    const vercelConfig = JSON.parse(fs.readFileSync(vercelPath, 'utf8'));
+    if (
+      vercelConfig.framework === 'vite' &&
+      String(vercelConfig.buildCommand || '').includes('frontend') &&
+      vercelConfig.outputDirectory === 'frontend/dist'
+    ) {
+      logPass(`vercel.json builds and publishes the Vite frontend`);
+    } else {
+      logFail(`vercel.json must build the frontend and publish frontend/dist`);
+    }
+  } catch {
+    logFail(`vercel.json must contain valid JSON`);
   }
 } else {
   logFail(`vercel.json not found`);
 }
 
-// 4. Check api/index.ts entrypoint
-const apiIndexPath = path.join(__dirname, '../api/index.ts');
-if (fs.existsSync(apiIndexPath)) {
-  logPass(`api/index.ts serverless function entrypoint exists`);
+// 4. Verify the frontend fails fast if its Render API URL is missing on Vercel.
+const viteConfigPath = path.join(__dirname, '../frontend/vite.config.ts');
+if (fs.existsSync(viteConfigPath)) {
+  const viteContent = fs.readFileSync(viteConfigPath, 'utf8');
+  if (viteContent.includes('VITE_API_URL') && viteContent.includes("process.env.VERCEL === '1'")) {
+    logPass(`Vite production build requires VITE_API_URL`);
+  } else {
+    logFail(`Vite must fail its Vercel build when VITE_API_URL is missing`);
+  }
 } else {
-  logFail(`api/index.ts serverless function entrypoint missing`);
+  logFail(`frontend/vite.config.ts not found`);
 }
 
-// 5. Check DeviceSpeechProvider SSR Guard
+// 5. Check DeviceSpeechProvider SSR Guard.
 const deviceSpeechPath = path.join(__dirname, '../src/providers/speech/DeviceSpeechProvider.ts');
 if (fs.existsSync(deviceSpeechPath)) {
   const speechContent = fs.readFileSync(deviceSpeechPath, 'utf8');

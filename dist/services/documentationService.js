@@ -88,8 +88,10 @@ class DocumentationService {
      * queue mode — the two modes must never diverge in behaviour.
      */
     async run(jobId, input) {
-        const model = this.modelClient ?? (0, modelClient_1.getClinicalModelClient)();
         try {
+            // Resolve the provider inside the job's failure boundary. Previously a missing API key
+            // threw before this try block, so the job failed but the meeting never entered FAILED.
+            const model = this.modelClient ?? (0, modelClient_1.getClinicalModelClient)();
             await processingJobStore_1.processingJobStore.markRunning(jobId);
             const engine = new extractionEngine_1.ClinicalExtractionEngine(model);
             const result = await engine.extract(input.transcript, {

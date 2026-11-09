@@ -23,6 +23,12 @@ import { consultationRecorder, ConsultationRecorder, RecordingState, canRecordAl
 import { sessionCheckpoint, pendingUpload } from './services/sessionCheckpoint';
 import { MetricsDashboard } from './components/MetricsDashboard';
 import { SAMPLE_CLINICAL_TRANSCRIPT } from './services/sampleTranscript';
+import {
+  MIN_TRANSCRIPT_CHARACTERS,
+  transcriptLength,
+  transcriptMeetsMinimum,
+  transcriptMinimumMessage
+} from './services/transcriptValidation';
 import './App.css';
 
 type Screen = 'LOGIN' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD' | 'DASHBOARD' | 'MEETINGS' | 'CONSENT' | 'RECORDING' | 'PROCESSING' | 'REVIEW' | 'COMPLETED' | 'METRICS';
@@ -108,6 +114,7 @@ function App() {
   const [manualTranscriptText, setManualTranscriptText] = useState('');
   const [isEditingTranscript, setIsEditingTranscript] = useState(false);
   const [showNoTranscriptModal, setShowNoTranscriptModal] = useState(false);
+  const [transcriptCaptureMessage, setTranscriptCaptureMessage] = useState('');
   const [recorderState, setRecorderState] = useState<RecordingState>('IDLE');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [transcriptionAvailable, setTranscriptionAvailable] = useState(true);
@@ -452,6 +459,7 @@ function App() {
     setScreen('PROCESSING');
     setStatusMessage(null);
     setShowNoTranscriptModal(false);
+    setTranscriptCaptureMessage('');
 
     try {
       const started = await submitTranscript(meetingId, textToSubmit, clientRef, templateType, sessionFormat);
@@ -501,7 +509,8 @@ function App() {
       wasRecordingAudio: false
     });
 
-    if (!combinedText || combinedText.trim().length < 5) {
+    if (!transcriptMeetsMinimum(combinedText)) {
+      setTranscriptCaptureMessage(transcriptMinimumMessage(combinedText));
       setStatusMessage(null);
       endingRef.current = false;
       setShowNoTranscriptModal(true);
@@ -1253,7 +1262,7 @@ function App() {
                       setIsEditingTranscript(true);
                     }}
                   >
-                    📋 Load Sample NHS Assessment (Demo)
+                    📋 Load Synthetic Sample Assessment (Demo)
                   </button>
                   <button
                     type="button"
@@ -1289,7 +1298,7 @@ function App() {
                 <p className="hint">
                   {isListening
                     ? 'Listening… speech will appear here as it is recognised.'
-                    : 'Press Start assessment and have the consultation as normal, or click "Load Sample NHS Assessment" to test.'}
+                    : 'Press Start assessment and have the consultation as normal, or click "Load Synthetic Sample Assessment" to test.'}
                 </p>
               )}
               <div ref={transcriptEndRef} />
@@ -1312,10 +1321,10 @@ function App() {
               <div className="modalOverlay">
                 <div className="modalCard">
                   <h3 style={{ color: '#f59e0b', margin: '0 0 12px 0', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>⚠️</span> No Live Speech Captured
+                    <span>⚠️</span> {transcriptCaptureMessage.startsWith('No transcript') ? 'No Transcript Captured' : 'Transcript Too Short'}
                   </h3>
                   <p style={{ color: '#cbd5e1', fontSize: '14px', lineHeight: 1.6, marginBottom: 20 }}>
-                    Live transcription was quiet or microphone speech was not detected in this browser session. Choose how to proceed:
+                    {transcriptCaptureMessage || `At least ${MIN_TRANSCRIPT_CHARACTERS} characters are needed to generate a report.`} Choose how to proceed:
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1323,12 +1332,14 @@ function App() {
                       className="primaryButton"
                       style={{ background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', padding: '12px 18px', fontWeight: 600 }}
                       onClick={() => {
-                        const sampleText = manualTranscriptText || SAMPLE_CLINICAL_TRANSCRIPT;
+                        const sampleText = transcriptMeetsMinimum(manualTranscriptText)
+                          ? manualTranscriptText
+                          : SAMPLE_CLINICAL_TRANSCRIPT;
                         setManualTranscriptText(sampleText);
                         void submitTranscriptContent(sampleText);
                       }}
                     >
-                      📋 Load Sample NHS Assessment (Demo) & Submit
+                      📋 Load Synthetic Sample Assessment (Demo) & Submit
                     </button>
 
                     <button

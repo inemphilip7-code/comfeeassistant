@@ -1,7 +1,22 @@
 import request from 'supertest';
 import app from '../../src/app';
+import { env } from '../../src/config/env';
+import { setClinicalModelClient } from '../../src/providers/llm/modelClient';
 
 describe('Phase 5 Final System Acceptance Test Suite', () => {
+  const originalProvider = env.LLM_PROVIDER;
+
+  beforeEach(() => {
+    // Exercise the configured development provider without requiring a paid API key.
+    env.LLM_PROVIDER = 'mock';
+    setClinicalModelClient(null);
+  });
+
+  afterEach(() => {
+    setClinicalModelClient(null);
+    env.LLM_PROVIDER = originalProvider;
+  });
+
   it('1. HEALTH CHECK: /health/speech-provider reports provider status and details', async () => {
     const res = await request(app).get('/health/speech-provider');
     expect(res.status).toBe(200);
@@ -49,12 +64,27 @@ describe('Phase 5 Final System Acceptance Test Suite', () => {
     expect(processRes.body.jobId).toBeDefined();
     expect(processRes.body.pollUrl).toContain('/api/transcripts/job/');
 
-    // The job is queryable immediately, which is what makes a refresh survivable.
-    const jobRes = await request(app)
-      .get(`/api/transcripts/job/${processRes.body.jobId}`)
+    // The job is queryable immediately and eventually produces an actual review draft.
+    let job: any = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const jobRes = await request(app)
+        .get(`/api/transcripts/job/${processRes.body.jobId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(jobRes.status).toBe(200);
+      job = jobRes.body;
+      if (job.state === 'SUCCEEDED' || job.state === 'FAILED') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(job.state).toBe('SUCCEEDED');
+    expect(job.clinicalNoteId).toBeDefined();
+
+    const reviewRes = await request(app)
+      .get(`/api/reviews/${meetingId}`)
       .set('Authorization', `Bearer ${token}`);
-    expect(jobRes.status).toBe(200);
-    expect(['PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED']).toContain(jobRes.body.state);
+    expect(reviewRes.status).toBe(200);
+    expect(reviewRes.body.noteId).toBe(job.clinicalNoteId);
+    expect(reviewRes.body.narrative.sections.length).toBeGreaterThan(0);
   });
 
   it('3. CONSENT RECORDING CONFIRMS THE SESSION IS READY TO START', async () => {

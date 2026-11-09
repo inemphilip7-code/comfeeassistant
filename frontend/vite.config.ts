@@ -2,6 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+if (process.env.VERCEL === '1' && !process.env.VITE_API_URL?.trim()) {
+  throw new Error('VITE_API_URL must point to the deployed backend before building the Vercel frontend.');
+}
+
+const backendTarget = process.env.VITE_BACKEND_URL || 'http://localhost:3000';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -48,20 +54,12 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: process.env.VITE_BACKEND_URL || 'https://comfeeassistant-zgrv.onrender.com',
+        target: backendTarget,
         changeOrigin: true,
-        secure: false,
-        headers: {
-          origin: 'https://comfeeassistant.vercel.app'
-        }
       },
       '/health': {
-        target: process.env.VITE_BACKEND_URL || 'https://comfeeassistant-zgrv.onrender.com',
+        target: backendTarget,
         changeOrigin: true,
-        secure: false,
-        headers: {
-          origin: 'https://comfeeassistant.vercel.app'
-        }
       }
     }
   }
