@@ -7,6 +7,14 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://vabatim-api.onrender.com/api/$1"
+    },
+    {
+      "source": "/health/(.*)",
+      "destination": "https://vabatim-api.onrender.com/health/$1"
+    },
+    {
       "source": "/((?!assets|api|health|sw.js|workbox-.*|manifest.webmanifest|favicon.ico|.*\\.png).*)",
       "destination": "/index.html"
     }

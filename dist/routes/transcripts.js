@@ -185,7 +185,8 @@ router.post('/process', async (req, res) => {
         return res.status(500).json({
             error: 'Processing failed to start',
             message: 'The transcript was saved but documentation could not be started. You can retry ' +
-                'without re-recording the consultation.'
+                'without re-recording the consultation.',
+            detail: error?.message ?? String(error)
         });
     }
 });

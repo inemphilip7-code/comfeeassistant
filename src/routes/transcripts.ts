@@ -210,7 +210,8 @@ router.post('/process', async (req: AuthenticatedRequest, res: Response) => {
       error: 'Processing failed to start',
       message:
         'The transcript was saved but documentation could not be started. You can retry ' +
-        'without re-recording the consultation.'
+        'without re-recording the consultation.',
+      detail: error?.message ?? String(error)
     });
   }
 });
