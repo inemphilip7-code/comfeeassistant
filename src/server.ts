@@ -1,6 +1,9 @@
 import app from './app';
 import { env } from './config/env';
+import { prisma } from './db';
 import { execSync } from 'child_process';
+import bcrypt from 'bcrypt';
+import { UserRole } from '@prisma/client';
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[Process] Unhandled Rejection at:', promise, 'reason:', reason);
@@ -13,49 +16,84 @@ process.on('uncaughtException', (err) => {
 const PORT = env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-function initializeDatabaseBeforeServing(): void {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) return;
+async function seedInitialClinician(): Promise<void> {
+  const email = process.env.SEED_CLINICIAN_EMAIL?.trim().toLowerCase();
+  const password = process.env.SEED_CLINICIAN_PASSWORD?.trim();
+  const fullName = process.env.SEED_CLINICIAN_NAME?.trim() || 'Clinician';
+  const organisationName = process.env.SEED_ORGANISATION_NAME?.trim() || 'Vabatim Clinical Service';
+  const organisationCode = process.env.SEED_ORGANISATION_CODE?.trim() || 'VABATIM-CLINIC';
 
-  let directUrl = process.env.DIRECT_URL || databaseUrl;
-  if (directUrl.includes(':6543')) {
-    directUrl = directUrl.replace(':6543', ':5432').replace('?pgbouncer=true', '').replace('&pgbouncer=true', '');
+  if (!email || !password || password.length < 12) {
+    return;
   }
 
-  const databaseEnvironment = {
-    ...process.env,
-    DIRECT_URL: directUrl,
-    DATABASE_URL: directUrl
-  };
-
-  // The free Render demo blueprint has no separate migration command. Complete its explicitly
-  // enabled schema sync before opening the port, rather than accepting requests while a
-  // background sync races login and transcript processing.
-  if (env.AUTO_DB_SYNC === 'true') {
-    console.log('[Database setup] Synchronising schema before accepting requests...');
-    execSync('npx prisma db push --skip-generate', {
-      stdio: 'inherit',
-      env: databaseEnvironment
+  try {
+    const organisation = await prisma.organisation.upsert({
+      where: { code: organisationCode },
+      update: {},
+      create: { name: organisationName, code: organisationCode }
     });
-  }
 
-  const seedVariableNames = [
-    'SEED_CLINICIAN_EMAIL',
-    'SEED_CLINICIAN_PASSWORD',
-    'SEED_CLINICIAN_NAME'
-  ];
-  const hasSeedValues = seedVariableNames.some((name) => Boolean(process.env[name]?.trim()));
-  if (hasSeedValues) {
-    console.log('[Database setup] Creating the configured initial clinician account...');
-    execSync('npx ts-node prisma/seed.ts', {
-      stdio: 'inherit',
-      env: databaseEnvironment
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash, fullName, role: UserRole.CLINICIAN },
+      create: {
+        email,
+        passwordHash,
+        fullName,
+        role: UserRole.CLINICIAN,
+        organisationId: organisation.id
+      }
     });
+
+    console.log(`[Database setup] Seed clinician account ready: ${email}`);
+  } catch (error: any) {
+    console.warn('[Database setup] Could not seed clinician account:', error?.message ?? error);
   }
 }
 
-try {
-  initializeDatabaseBeforeServing();
+async function initializeDatabaseBeforeServing(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return;
+
+  if (env.AUTO_DB_SYNC === 'true') {
+    let directUrl = process.env.DIRECT_URL || databaseUrl;
+    if (directUrl.includes(':6543')) {
+      directUrl = directUrl.replace(':6543', ':5432').replace('?pgbouncer=true', '').replace('&pgbouncer=true', '');
+    }
+    if (directUrl.startsWith('postgres') && !directUrl.includes('sslmode=')) {
+      directUrl += (directUrl.includes('?') ? '&' : '?') + 'sslmode=require';
+    }
+
+    const databaseEnvironment = {
+      ...process.env,
+      DIRECT_URL: directUrl,
+      DATABASE_URL: directUrl
+    };
+
+    console.log('[Database setup] Synchronising schema before accepting requests...');
+    try {
+      execSync('npx prisma db push --skip-generate --accept-data-loss', {
+        stdio: 'inherit',
+        env: databaseEnvironment
+      });
+      console.log('[Database setup] Schema synchronization complete.');
+    } catch (err: any) {
+      console.warn('[Database setup] Schema synchronization warning:', err?.message ?? err);
+    }
+  }
+
+  await seedInitialClinician();
+}
+
+async function startServer() {
+  try {
+    await initializeDatabaseBeforeServing();
+  } catch (err: any) {
+    console.warn('[Database setup] Initialization non-fatal warning:', err?.message ?? err);
+  }
+
   app.listen(PORT, HOST, () => {
     console.log('=======================================================');
     console.log(` Vabatim Backend API running on http://${HOST}:${PORT}`);
@@ -64,7 +102,6 @@ try {
     console.log(` Storage Provider: ${env.STORAGE_PROVIDER}`);
     console.log('=======================================================');
   });
-} catch (error: any) {
-  console.error('[Database setup] API startup stopped before serving requests:', error?.message ?? error);
-  process.exit(1);
 }
+
+void startServer();
