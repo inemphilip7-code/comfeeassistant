@@ -8,11 +8,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://vabatim-api.onrender.com/api/$1"
+      "destination": "https://comfeeassistant-1.onrender.com/api/$1"
     },
     {
-      "source": "/health/(.*)",
-      "destination": "https://vabatim-api.onrender.com/health/$1"
+      "source": "/health",
+      "destination": "https://comfeeassistant-1.onrender.com/health"
     },
     {
       "source": "/((?!assets|api|health|sw.js|workbox-.*|manifest.webmanifest|favicon.ico|.*\\.png).*)",

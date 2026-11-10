@@ -2,10 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-if (process.env.VERCEL === '1' && !process.env.VITE_API_URL?.trim()) {
-  throw new Error('VITE_API_URL must point to the deployed backend before building the Vercel frontend.');
-}
-
+// On Vercel, API requests use same-origin rewrites in vercel.json by default.
+// VITE_API_URL remains optional for deployments that intentionally call an API directly.
 const backendTarget = process.env.VITE_BACKEND_URL || 'http://localhost:3000';
 
 export default defineConfig({
